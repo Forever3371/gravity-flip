@@ -14,24 +14,24 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * 核心逻辑：玩家完成一个成就 → 全服所有人的重力随机翻转。
+ * 核心逻辑：玩家完成一个成就的<strong>任意一个 criterion</strong> → 全服所有人的重力随机翻转。
  * <p>
  * 几个关键决定：
  * <ul>
- *     <li><b>只在"整个成就完成"时触发</b>：一个成就有多个 criterion，
- *         {@code award} 会被调用多次。判断 {@code getOrStartProgress(...).isDone()}
- *         才是"这个成就真的做完了"。</li>
+ *     <li><b>criterion 级触发</b>：不等整个成就做完。"吃一个苹果"（均衡饮食的一部分）、
+ *         "走进一个新群系"（探索的时光的一部分）都会各自触发一次翻转。</li>
+ *     <li><b>按 criterion 去重</b>：去重键是 {@code 成就id#criterion名}。
+ *         如果只按成就 id 去重，均衡饮食那 40 种食物就只会翻第一次。</li>
  *     <li><b>不需要处理登录重放</b>：玩家上线时进度是通过私有的
  *         {@code loadProgressMap} 直接塞进去的，<strong>不经过</strong> {@code award}，
  *         所以不会在每次登录时误触发。（这一点是查过字节码确认的，不是猜的。）</li>
- *     <li><b>额外去重</b>：万一同一个成就在同一条命里被反复判定完成，用集合挡一下。</li>
- *     <li><b>翻完保持</b>：不设定时器，重力方向一直保持到下一次成就。</li>
+ *     <li><b>翻完保持</b>：不设定时器，重力方向一直保持到下一次触发。</li>
  * </ul>
  */
 public final class GravityFlipTrigger {
 
-    /** 已经触发过的成就 id，避免重复触发。 */
-    private static final Set<ResourceLocation> ALREADY_TRIGGERED = new HashSet<>();
+    /** 已经触发过的 {@code 成就id#criterion}，避免同一个 criterion 重复触发。 */
+    private static final Set<String> ALREADY_TRIGGERED = new HashSet<>();
 
     /** 六个方向，随机挑一个。 */
     private static final List<Direction> ALL_DIRECTIONS = List.of(
@@ -45,18 +45,22 @@ public final class GravityFlipTrigger {
     }
 
     /**
-     * 某个玩家完成了一个成就。返回是否真的触发了翻转。
+     * 某个玩家完成了一个成就的某个 criterion。返回是否真的触发了翻转。
      *
      * @param advancementId    成就的资源 id（用于去重与日志）
-     * @param advancementTitle 成就的显示名（用于聊天框播报；取不到时调用方会退回 id）
+     * @param criterion        这次完成的 criterion 名（去重键的一部分）
+     * @param advancementTitle 成就的显示名（用于聊天框播报）
+     * @param progressText     原版给的进度文本（形如 "3/40"）
+     * @param wholeDone        这次是否刚好把整个成就做完了
      */
-    public static boolean onAdvancementCompleted(ServerPlayer player, ResourceLocation advancementId,
-                                                 Component advancementTitle) {
+    public static boolean onCriterionCompleted(ServerPlayer player, ResourceLocation advancementId,
+                                               String criterion, Component advancementTitle,
+                                               Component progressText, boolean wholeDone) {
         if (!GravityFlipConfig.enabled) {
             return false;
         }
-        if (!ALREADY_TRIGGERED.add(advancementId)) {
-            return false; // 同一个成就只触发一次
+        if (!ALREADY_TRIGGERED.add(advancementId + "#" + criterion)) {
+            return false; // 这个 criterion 已经触发过了
         }
 
         MinecraftServer server = player.getServer();
@@ -68,18 +72,30 @@ public final class GravityFlipTrigger {
         int affected = applyToEveryone(server, direction);
 
         if (GravityFlipConfig.showMessage) {
+            // 整个成就做完了 vs 只完成了一部分，措辞不一样
+            Component headline = wholeDone
+                    ? Component.literal(" 完成了成就 ").withStyle(ChatFormatting.WHITE)
+                    : Component.literal(" 完成了 ").withStyle(ChatFormatting.WHITE);
+            Component tail = wholeDone
+                    ? Component.empty()
+                    : Component.literal(" 的一部分（").withStyle(ChatFormatting.GRAY)
+                            .append(progressText.copy().withStyle(ChatFormatting.GREEN))
+                            .append(Component.literal("）").withStyle(ChatFormatting.GRAY));
+
             server.getPlayerList().broadcastSystemMessage(
                     Component.literal("[重力翻转] ").withStyle(ChatFormatting.AQUA)
-                            .append(Component.literal(player.getName().getString() + " 完成了成就 ")
-                                    .withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(player.getName().getString()).withStyle(ChatFormatting.WHITE))
+                            .append(headline)
                             .append(advancementTitle.copy().withStyle(ChatFormatting.GOLD))
+                            .append(tail)
                             .append(Component.literal("，所有人的重力变成了 " + directionName(direction))
                                     .withStyle(ChatFormatting.YELLOW)),
                     false);
         }
 
-        GravityFlip.LOGGER.info("[Gravity Flip] {} 完成了成就 {}（{}），重力方向 -> {}（影响 {} 名玩家）",
-                player.getName().getString(), advancementTitle.getString(), advancementId, direction, affected);
+        GravityFlip.LOGGER.info("[Gravity Flip] {} 完成了 {} 的 criterion {}（{}），重力方向 -> {}（影响 {} 名玩家）",
+                player.getName().getString(), advancementId, criterion,
+                progressText.getString(), direction, affected);
         return true;
     }
 
@@ -112,7 +128,7 @@ public final class GravityFlipTrigger {
         return ALL_DIRECTIONS.get(RANDOM.nextInt(ALL_DIRECTIONS.size()));
     }
 
-    /** 供命令与测试使用：清掉去重记录，好让同一个成就能再触发一次。 */
+    /** 供命令与测试使用：清掉去重记录。 */
     public static void resetTriggered() {
         ALREADY_TRIGGERED.clear();
     }

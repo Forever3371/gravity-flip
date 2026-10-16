@@ -56,32 +56,48 @@ public class GravityFlipGameTest implements FabricGameTest {
 
     // ---------------------------------------------------------- 成就触发
 
-    /** 完成成就 → 所有人重力翻转 */
+    /** 只完成"一部分"（一个 criterion）就要触发，不用等整个成就做完 */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void completingAdvancementFlipsGravity(GameTestHelper helper) {
+    public void completingOneCriterionFlipsGravity(GameTestHelper helper) {
         GravityFlipTrigger.resetTriggered();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         Direction before = GravityChangerAPI.getGravityDirection(player);
 
-        boolean triggered = trigger(player, "test/advancement");
+        // 1/40 —— 相当于"均衡饮食"里只吃了一种食物
+        boolean triggered = trigger(player, "test/balanced_diet", "apple", "1/40", false);
 
-        check(triggered, "完成成就应当触发翻转");
+        check(triggered, "只完成一个 criterion 也应当触发翻转");
         Direction after = GravityChangerAPI.getGravityDirection(player);
         check(after != null, "翻转后重力方向不该是 null");
         check(ALL_SIX.contains(after), "翻转后重力方向不合法：" + after);
-        // 注意：随机方向有可能正好抽到翻转前的方向，所以这里不断言 after != before
-        GravityFlip.LOGGER.info("[测试] 完成成就触发翻转：{} -> {}", before, after);
+        GravityFlip.LOGGER.info("[测试] 单个 criterion 触发翻转：{} -> {}", before, after);
         helper.succeed();
     }
 
-    /** 同一个成就只触发一次（一个成就有多个 criterion，必须去重） */
+    /** 同一个成就的不同 criterion 都要能各自触发一次（这是"吃苹果"和"吃面包"各翻一次的关键） */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void sameAdvancementTriggersOnlyOnce(GameTestHelper helper) {
+    public void differentCriteriaBothTrigger(GameTestHelper helper) {
+        GravityFlipTrigger.resetTriggered();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        String advancement = "test/balanced_diet";
+
+        check(trigger(player, advancement, "apple", "1/40", false), "第一个 criterion 应当触发");
+        check(trigger(player, advancement, "bread", "2/40", false), "同一个成就的第二个 criterion 也应当触发");
+        check(GravityFlipTrigger.triggeredCount() == 2,
+                "应当记录 2 次触发，实际 " + GravityFlipTrigger.triggeredCount());
+
+        GravityFlipTrigger.resetTriggered();
+        helper.succeed();
+    }
+
+    /** 同一个 criterion 只触发一次（成就系统会重复调用 award） */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void sameCriterionTriggersOnlyOnce(GameTestHelper helper) {
         GravityFlipTrigger.resetTriggered();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
 
-        check(trigger(player, "test/only_once"), "第一次完成应当触发");
-        check(!trigger(player, "test/only_once"), "同一个成就不该重复触发");
+        check(trigger(player, "test/only_once", "c1", "1/3", false), "第一次应当触发");
+        check(!trigger(player, "test/only_once", "c1", "1/3", false), "同一个 criterion 不该重复触发");
         check(GravityFlipTrigger.triggeredCount() == 1,
                 "触发记录应当只有 1 条，实际 " + GravityFlipTrigger.triggeredCount());
 
@@ -97,7 +113,7 @@ public class GravityFlipGameTest implements FabricGameTest {
 
         GravityFlipConfig.enabled = false;
         try {
-            check(!trigger(player, "test/disabled"), "关掉开关后不该触发");
+            check(!trigger(player, "test/disabled", "c1", "1/1", false), "关掉开关后不该触发");
         } finally {
             GravityFlipConfig.enabled = true;
             GravityFlipTrigger.resetTriggered();
@@ -107,10 +123,12 @@ public class GravityFlipGameTest implements FabricGameTest {
 
     // ---------------------------------------------------------- 辅助
 
-    /** 模拟"某个玩家完成了某个成就"。第三个参数是播报用的显示名。 */
-    private static boolean trigger(ServerPlayer player, String advancementPath) {
+    private static boolean trigger(ServerPlayer player, String advancementPath, String criterion,
+                                   String progressText, boolean wholeDone) {
         ResourceLocation id = ResourceLocation.withDefaultNamespace(advancementPath);
-        return GravityFlipTrigger.onAdvancementCompleted(player, id, Component.literal("测试成就"));
+        return GravityFlipTrigger.onCriterionCompleted(
+                player, id, criterion, Component.literal("测试成就"),
+                Component.literal(progressText), wholeDone);
     }
 
     private static void check(boolean condition, String message) {
