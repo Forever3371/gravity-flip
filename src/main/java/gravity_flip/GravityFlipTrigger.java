@@ -42,6 +42,15 @@ public final class GravityFlipTrigger {
 
     private static final Random RANDOM = new Random();
 
+    /**
+     * 当前生效的重力方向。
+     * <p>
+     * 记这个是为了解决"重生之后重力恢复原状"的问题：重力方向是挂在玩家实体上的组件，
+     * 死亡重生会换一个新实体，原来那份就丢了。所以这里留一份全局记录，
+     * 玩家重生时重新贴回去。
+     */
+    private static Direction currentDirection = Direction.DOWN;
+
     private GravityFlipTrigger() {
     }
 
@@ -86,6 +95,7 @@ public final class GravityFlipTrigger {
         boolean wholeDone = progress.isDone();
 
         Direction direction = pickDirection();
+        currentDirection = direction; // 记下来，玩家重生时要重新贴回去
         int affected = applyToEveryone(server, direction);
 
         if (GravityFlipConfig.showMessage) {
@@ -138,6 +148,28 @@ public final class GravityFlipTrigger {
         }
         GravityChangerAPI.setBaseGravityDirection(player, direction);
         return true;
+    }
+
+    /** 当前生效的重力方向。 */
+    public static Direction currentDirection() {
+        return currentDirection;
+    }
+
+    /**
+     * 把当前重力方向重新贴到某个玩家身上。
+     * <p>
+     * 玩家死亡重生会换成新实体，挂在旧实体上的重力方向会丢，
+     * 所以重生后要调一次这个方法，否则会出现"死一次重力就恢复正常了"。
+     */
+    public static void reapplyCurrentGravity(ServerPlayer player) {
+        if (!GravityFlipConfig.enabled) {
+            return;
+        }
+        try {
+            applyTo(player, currentDirection);
+        } catch (Throwable t) {
+            GravityFlip.LOGGER.error("[Gravity Flip] 重生后恢复重力方向时出错（已忽略）", t);
+        }
     }
 
     /** 随机挑一个重力方向。 */

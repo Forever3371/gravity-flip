@@ -2,6 +2,7 @@ package gravity_flip;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +29,11 @@ public class GravityFlip implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 GravityFlipCommand.register(dispatcher));
+
+        // 玩家死亡重生会换一个新实体，挂在身上的重力方向会丢，
+        // 所以重生后把当前方向重新贴回去（否则"死一次重力就恢复正常了"）。
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
+                GravityFlipTrigger.reapplyCurrentGravity(newPlayer));
 
         LOGGER.info("[Gravity Flip] 已加载：完成成就会让全服重力随机翻转。当前状态：{}",
                 GravityFlipConfig.enabled
