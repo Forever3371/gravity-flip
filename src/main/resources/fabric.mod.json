@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "gravity_flip",
+  "version": "${version}",
+
+  "name": "Gravity Flip",
+  "description": "完成成就会让全服所有人的重力方向随机翻转，翻完一直保持。重力本体借用 Gravity Changer (MIT)。",
+  "contact": {
+    "issues": "https://github.com/Mortimer-Kerman/GravityChanger/issues",
+    "sources": "https://github.com/Mortimer-Kerman/GravityChanger",
+    "homepage": "https://mortimer-kerman.github.io/"
+  },
+  "authors": [
+    "Gaider10",
+    "Fusion Flux",
+    "qouteall",
+    "CyborgCabbage",
+    "Mortimer Kerman",
+    "other contributors (see GitHub)"
+  ],
+  "license": "MIT",
+  "icon": "assets/gravity_flip/icon.png",
+  
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "gravity_flip.GravityFlip",
+      "gravity_flip.GravityChangerMod"
+    ],
+    "client": [
+      "gravity_flip.GravityChangerModClient"
+    ],
+    "modmenu": [
+      "gravity_flip.ModMenuIntegration"
+    ],
+    "cardinal-components": [
+      "gravity_flip.GravityChangerComponents"
+    ]
+  },
+  "mixins": [
+    "gravity_flip.mixins.json"
+  ],
+
+  "depends": {
+    "fabricloader": ">=0.15.10",
+    "fabric": "*",
+    "minecraft": "~1.21",
+    "java": ">=21",
+    "cloth-config2": "*",
+    "cardinal-components-base": "*",
+    "cardinal-components-entity": "*"
+  },
+  "custom": {
+    "cardinal-components": [
+      "gravity_flip:gravity_data",
+      "gravity_flip:dimension_data"
+    ],
+    "lithium:options": {
+      "mixin.entity.collisions": false,
+      "mixin.entity.fast_suffocation_check": false
+    }
+  }
+}

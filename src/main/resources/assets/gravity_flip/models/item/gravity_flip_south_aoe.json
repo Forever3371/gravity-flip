@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "gravity_flip:item/gravity_flip_south_aoe"
+  }
+}

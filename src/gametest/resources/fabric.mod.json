@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "gravity-flip-test",
+  "version": "1.0.0",
+  "name": "Gravity Flip Tests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "gravity_flip.test.GravityFlipGameTest"
+    ]
+  },
+  "depends": {
+    "gravity_flip": "*"
+  }
+}
