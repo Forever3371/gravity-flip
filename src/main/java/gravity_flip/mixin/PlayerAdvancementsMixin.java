@@ -50,10 +50,11 @@ public abstract class PlayerAdvancementsMixin {
                 .map(DisplayInfo::getTitle)
                 .orElse(Component.literal(advancement.id().toString()));
 
-        // 原版自带的进度文本（形如 "3/40"），比自己数更省事，而且会跟着语言变
-        Component progressText = progress.getProgressText();
-
+        // 把 progress 直接交给下游自己算进度：
+        // AdvancementProgress.getProgressText() 在这里会返回 null（requirements 还没初始化），
+        // 我上次就是在它上面崩的。
         GravityFlipTrigger.onCriterionCompleted(
-                this.player, advancement.id(), criterion, title, progressText, progress.isDone());
+                this.player, advancement.id(), criterion, title, progress,
+                advancement.value().criteria().size());
     }
 }

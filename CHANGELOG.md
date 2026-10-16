@@ -1,5 +1,21 @@
 # 更新日志
 
+## [1.1.1] - 2025
+
+### 修复
+
+- **崩服 bug**：\AdvancementProgress.getProgressText()\ 在 requirements 还没初始化时会返回 null，
+  而我在 \ward\ 返回后立刻就去取它，导致 \NullPointerException\ 直接把服务端 tick 崩掉
+  （错误报告：Ticking entity）。现在进度文本改成自己数 completed/total，
+  不再依赖那个会返回 null 的方法。
+- **给整个触发逻辑加异常保护**：成就触发只是附加玩法，任何意外都只记日志、不再影响服务器运行。
+
+### 测试
+
+- gametest 改成**端到端**：真的调用 \ward\ 去完成真实成就（\husbandry/balanced_diet\、
+  \story/root\）的 criterion，验证 Mixin 注入生效、重力真的被翻、第二个 criterion 再翻一次、
+  重复 award 不重复触发。
+
 ## [1.1.0] - 2025
 
 ### 变更

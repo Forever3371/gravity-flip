@@ -2,6 +2,7 @@ package gravity_flip;
 
 import gravity_flip.api.GravityChangerAPI;
 import net.minecraft.ChatFormatting;
+import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -46,16 +47,23 @@ public final class GravityFlipTrigger {
 
     /**
      * 某个玩家完成了一个成就的某个 criterion。返回是否真的触发了翻转。
-     *
-     * @param advancementId    成就的资源 id（用于去重与日志）
-     * @param criterion        这次完成的 criterion 名（去重键的一部分）
-     * @param advancementTitle 成就的显示名（用于聊天框播报）
-     * @param progressText     原版给的进度文本（形如 "3/40"）
-     * @param wholeDone        这次是否刚好把整个成就做完了
+     * <p>
+     * 整个方法包了异常保护：成就触发只是附加玩法，任何意外都不该把服务器 tick 崩掉。
      */
     public static boolean onCriterionCompleted(ServerPlayer player, ResourceLocation advancementId,
                                                String criterion, Component advancementTitle,
-                                               Component progressText, boolean wholeDone) {
+                                               AdvancementProgress progress, int total) {
+        try {
+            return doTrigger(player, advancementId, criterion, advancementTitle, progress, total);
+        } catch (Throwable t) {
+            GravityFlip.LOGGER.error("[Gravity Flip] 处理成就触发时出错（已忽略，不影响游戏）", t);
+            return false;
+        }
+    }
+
+    private static boolean doTrigger(ServerPlayer player, ResourceLocation advancementId,
+                                     String criterion, Component advancementTitle,
+                                     AdvancementProgress progress, int total) {
         if (!GravityFlipConfig.enabled) {
             return false;
         }
@@ -67,6 +75,15 @@ public final class GravityFlipTrigger {
         if (server == null) {
             return false;
         }
+
+        // 进度文本自己算，不用 AdvancementProgress.getProgressText()——
+        // 那个方法在 requirements 还没初始化时会返回 null，我上次就是在这崩的。
+        int completed = 0;
+        for (String ignored : progress.getCompletedCriteria()) {
+            completed++;
+        }
+        Component progressText = Component.literal(completed + "/" + total);
+        boolean wholeDone = progress.isDone();
 
         Direction direction = pickDirection();
         int affected = applyToEveryone(server, direction);

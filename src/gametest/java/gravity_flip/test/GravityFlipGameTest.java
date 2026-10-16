@@ -5,18 +5,21 @@ import gravity_flip.GravityFlipConfig;
 import gravity_flip.GravityFlipTrigger;
 import gravity_flip.api.GravityChangerAPI;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
+import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
- * 自动化测试：在无头服务端里真的设置重力方向，读回来验证。
+ * 自动化测试：在无头服务端里真的设置重力方向、真的 award 成就，然后读回来验证。
  * 运行：./gradlew runGameTest
  */
 public class GravityFlipGameTest implements FabricGameTest {
@@ -54,52 +57,79 @@ public class GravityFlipGameTest implements FabricGameTest {
         helper.succeed();
     }
 
-    // ---------------------------------------------------------- 成就触发
+    // ---------------------------------------------------------- 端到端：真的完成成就
 
-    /** 只完成"一部分"（一个 criterion）就要触发，不用等整个成就做完 */
+    /**
+     * 端到端：真的调用 award 完成一个真实成就的 criterion，
+     * 验证 Mixin 注入生效、并且重力真的被翻了。
+     * <p>
+     * 用"均衡饮食"（吃 40 种食物）——它的每个 criterion 对应一种食物，
+     * 正好对应"吃一次苹果也要翻一次"这个需求。
+     */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void completingOneCriterionFlipsGravity(GameTestHelper helper) {
+    public void realCriterionAwardFlipsGravity(GameTestHelper helper) {
         GravityFlipTrigger.resetTriggered();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        MinecraftServer server = helper.getLevel().getServer();
+
+        AdvancementHolder advancement = server.getAdvancements()
+                .get(ResourceLocation.withDefaultNamespace("husbandry/balanced_diet"));
+        check(advancement != null, "找不到成就 husbandry/balanced_diet");
+
+        List<String> criteria = new ArrayList<>(advancement.value().criteria().keySet());
+        check(!criteria.isEmpty(), "均衡饮食居然没有 criterion");
+
         Direction before = GravityChangerAPI.getGravityDirection(player);
 
-        // 1/40 —— 相当于"均衡饮食"里只吃了一种食物
-        boolean triggered = trigger(player, "test/balanced_diet", "apple", "1/40", false);
+        // 完成第一个 criterion（相当于"吃了一个苹果"）
+        boolean awarded = player.getAdvancements().award(advancement, criteria.get(0));
+        check(awarded, "award 应当返回 true");
 
-        check(triggered, "只完成一个 criterion 也应当触发翻转");
-        Direction after = GravityChangerAPI.getGravityDirection(player);
-        check(after != null, "翻转后重力方向不该是 null");
-        check(ALL_SIX.contains(after), "翻转后重力方向不合法：" + after);
-        GravityFlip.LOGGER.info("[测试] 单个 criterion 触发翻转：{} -> {}", before, after);
-        helper.succeed();
-    }
-
-    /** 同一个成就的不同 criterion 都要能各自触发一次（这是"吃苹果"和"吃面包"各翻一次的关键） */
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void differentCriteriaBothTrigger(GameTestHelper helper) {
-        GravityFlipTrigger.resetTriggered();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        String advancement = "test/balanced_diet";
-
-        check(trigger(player, advancement, "apple", "1/40", false), "第一个 criterion 应当触发");
-        check(trigger(player, advancement, "bread", "2/40", false), "同一个成就的第二个 criterion 也应当触发");
-        check(GravityFlipTrigger.triggeredCount() == 2,
-                "应当记录 2 次触发，实际 " + GravityFlipTrigger.triggeredCount());
-
-        GravityFlipTrigger.resetTriggered();
-        helper.succeed();
-    }
-
-    /** 同一个 criterion 只触发一次（成就系统会重复调用 award） */
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void sameCriterionTriggersOnlyOnce(GameTestHelper helper) {
-        GravityFlipTrigger.resetTriggered();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-
-        check(trigger(player, "test/only_once", "c1", "1/3", false), "第一次应当触发");
-        check(!trigger(player, "test/only_once", "c1", "1/3", false), "同一个 criterion 不该重复触发");
+        // 触发是通过 Mixin 自动发生的，这里验证它确实发生了
         check(GravityFlipTrigger.triggeredCount() == 1,
-                "触发记录应当只有 1 条，实际 " + GravityFlipTrigger.triggeredCount());
+                "完成一个 criterion 应当触发 1 次翻转，实际 " + GravityFlipTrigger.triggeredCount());
+        Direction after = GravityChangerAPI.getGravityDirection(player);
+        check(ALL_SIX.contains(after), "翻转后重力方向不合法：" + after);
+        GravityFlip.LOGGER.info("[测试] 真实 award 触发翻转：{} -> {}", before, after);
+
+        // 再完成第二个 criterion（相当于"又吃了一个面包"），应该再翻一次
+        if (criteria.size() > 1) {
+            boolean second = player.getAdvancements().award(advancement, criteria.get(1));
+            check(second, "第二个 criterion 的 award 也应当返回 true");
+            check(GravityFlipTrigger.triggeredCount() == 2,
+                    "第二个 criterion 应当再触发一次，实际 " + GravityFlipTrigger.triggeredCount());
+        }
+
+        // 重复 award 同一个 criterion 不该再触发
+        player.getAdvancements().award(advancement, criteria.get(0));
+        int expectedMax = Math.min(2, criteria.size());
+        check(GravityFlipTrigger.triggeredCount() == expectedMax,
+                "重复 award 同一个 criterion 不该增加触发次数，实际 " + GravityFlipTrigger.triggeredCount());
+
+        GravityFlipTrigger.resetTriggered();
+        helper.succeed();
+    }
+
+    /** 整个成就做完（所有 criterion 都完成）时也要翻 */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void finishingWholeAdvancementAlsoFlips(GameTestHelper helper) {
+        GravityFlipTrigger.resetTriggered();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        MinecraftServer server = helper.getLevel().getServer();
+
+        AdvancementHolder advancement = server.getAdvancements()
+                .get(ResourceLocation.withDefaultNamespace("story/root"));
+        check(advancement != null, "找不到成就 story/root");
+
+        List<String> criteria = new ArrayList<>(advancement.value().criteria().keySet());
+        for (String criterion : criteria) {
+            player.getAdvancements().award(advancement, criterion);
+        }
+
+        check(GravityFlipTrigger.triggeredCount() >= 1,
+                "完成成就的 criterion 应当触发翻转，实际 " + GravityFlipTrigger.triggeredCount());
+        check(player.getAdvancements().getOrStartProgress(advancement).isDone(),
+                "story/root 应当已经完成");
 
         GravityFlipTrigger.resetTriggered();
         helper.succeed();
@@ -110,10 +140,18 @@ public class GravityFlipGameTest implements FabricGameTest {
     public void disabledConfigBlocksTrigger(GameTestHelper helper) {
         GravityFlipTrigger.resetTriggered();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        MinecraftServer server = helper.getLevel().getServer();
+
+        AdvancementHolder advancement = server.getAdvancements()
+                .get(ResourceLocation.withDefaultNamespace("husbandry/balanced_diet"));
+        check(advancement != null, "找不到成就 husbandry/balanced_diet");
+        List<String> criteria = new ArrayList<>(advancement.value().criteria().keySet());
 
         GravityFlipConfig.enabled = false;
         try {
-            check(!trigger(player, "test/disabled", "c1", "1/1", false), "关掉开关后不该触发");
+            player.getAdvancements().award(advancement, criteria.get(0));
+            check(GravityFlipTrigger.triggeredCount() == 0,
+                    "关掉开关后不该触发，实际 " + GravityFlipTrigger.triggeredCount());
         } finally {
             GravityFlipConfig.enabled = true;
             GravityFlipTrigger.resetTriggered();
@@ -122,14 +160,6 @@ public class GravityFlipGameTest implements FabricGameTest {
     }
 
     // ---------------------------------------------------------- 辅助
-
-    private static boolean trigger(ServerPlayer player, String advancementPath, String criterion,
-                                   String progressText, boolean wholeDone) {
-        ResourceLocation id = ResourceLocation.withDefaultNamespace(advancementPath);
-        return GravityFlipTrigger.onCriterionCompleted(
-                player, id, criterion, Component.literal("测试成就"),
-                Component.literal(progressText), wholeDone);
-    }
 
     private static void check(boolean condition, String message) {
         if (!condition) {
