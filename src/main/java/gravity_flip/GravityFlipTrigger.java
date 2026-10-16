@@ -76,6 +76,16 @@ public final class GravityFlipTrigger {
         if (!GravityFlipConfig.enabled) {
             return false;
         }
+
+        // 配方解锁也走 award —— Minecraft 的配方书系统直接复用了成就那套机制，
+        // 每个配方都被包装成一个隐藏进度（id 形如 minecraft:recipes/food/cooked_salmon）。
+        // 拿到一条生鲑鱼会一口气解锁 3 个烤鲑鱼配方，不挡掉就会连翻 3 次。
+        // 这些是内部进度，不是玩家理解的"成就"，默认过滤掉。
+        if (GravityFlipConfig.ignoreRecipeUnlocks
+                && advancementId.getPath().startsWith("recipes/")) {
+            return false;
+        }
+
         if (!ALREADY_TRIGGERED.add(advancementId + "#" + criterion)) {
             return false; // 这个 criterion 已经触发过了
         }

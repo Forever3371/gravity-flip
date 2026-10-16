@@ -28,6 +28,16 @@ public final class GravityFlipConfig {
     /** 是否在聊天框播报是谁完成了什么成就、重力变成了哪个方向。 */
     public static boolean showMessage = true;
 
+    /**
+     * 是否忽略"配方解锁"。
+     * <p>
+     * Minecraft 的配方书系统复用了成就机制：每个配方都是一个隐藏进度
+     * （id 形如 {@code minecraft:recipes/food/cooked_salmon}），玩家首次拿到某个物品时
+     * 会自动解锁相关配方并触发一次 award。拿到一条生鲑鱼会一口气解锁 3 个烤鲑鱼配方，
+     * 不挡掉就会连翻 3 次重力。默认忽略它们。
+     */
+    public static boolean ignoreRecipeUnlocks = true;
+
     private static final String FILE_NAME = "gravity_flip.properties";
 
     private GravityFlipConfig() {
@@ -52,6 +62,7 @@ public final class GravityFlipConfig {
 
         enabled = readBoolean(props, "enabled", false);
         showMessage = readBoolean(props, "show_message", true);
+        ignoreRecipeUnlocks = readBoolean(props, "ignore_recipe_unlocks", true);
     }
 
     private static boolean readBoolean(Properties props, String key, boolean fallback) {
@@ -74,6 +85,14 @@ public final class GravityFlipConfig {
 
                 # 是否在聊天框播报是谁完成了什么成就、重力变成了哪个方向
                 show_message=true
+
+                # 是否忽略"配方解锁"
+                # Minecraft 的配方书系统复用了成就机制：每个配方都是一个隐藏进度
+                # （id 形如 minecraft:recipes/food/cooked_salmon）。玩家首次拿到某个物品时
+                # 会自动解锁相关配方，每个配方都会触发一次 award——
+                # 比如拿到一条生鲑鱼会一口气解锁 3 个烤鲑鱼配方，不挡掉就会连翻 3 次重力。
+                # 默认 true = 忽略这些内部进度，只对真正的成就生效。
+                ignore_recipe_unlocks=true
                 """;
     }
 }

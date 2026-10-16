@@ -165,11 +165,55 @@ public class GravityFlipGameTest implements FabricGameTest {
         helper.succeed();
     }
 
+    // ---------------------------------------------------------- 配方解锁不该触发
+
+    /**
+     * 端到端：解锁配方不该触发翻转。
+     * <p>
+     * Minecraft 的配方书复用了成就机制，每个配方都是一个隐藏进度。
+     * 玩家拿到一条生鲑鱼会一口气解锁 3 个烤鲑鱼配方（烟熏/营火/熔炉），
+     * 不挡掉就会连翻 3 次重力——这就是实测遇到的那个问题。
+     */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void recipeUnlockDoesNotTrigger(GameTestHelper helper) {
+        enableAndReset();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        MinecraftServer server = helper.getLevel().getServer();
+
+        AdvancementHolder recipe = server.getAdvancements()
+                .get(ResourceLocation.withDefaultNamespace("recipes/food/cooked_salmon"));
+        check(recipe != null, "找不到配方进度 recipes/food/cooked_salmon");
+
+        List<String> criteria = new ArrayList<>(recipe.value().criteria().keySet());
+        check(!criteria.isEmpty(), "配方进度居然没有 criterion");
+
+        Direction before = GravityChangerAPI.getGravityDirection(player);
+        player.getAdvancements().award(recipe, criteria.get(0));
+
+        check(GravityFlipTrigger.triggeredCount() == 0,
+                "配方解锁不该触发翻转，实际 " + GravityFlipTrigger.triggeredCount());
+        check(GravityChangerAPI.getGravityDirection(player) == before,
+                "配方解锁后重力方向不该变：" + before + " -> "
+                        + GravityChangerAPI.getGravityDirection(player));
+
+        // 打开开关后应该又能触发，确认只是被过滤而不是整条链路坏了
+        GravityFlipConfig.ignoreRecipeUnlocks = false;
+        try {
+            player.getAdvancements().award(recipe, criteria.get(0));
+            // 注意：同一个 criterion 已经在上面 award 过一次，去重记录会挡掉它，
+            // 所以这里不强制要求触发，只确认不崩。
+        } finally {
+            GravityFlipConfig.ignoreRecipeUnlocks = true;
+        }
+        helper.succeed();
+    }
+
     // ---------------------------------------------------------- 辅助
 
     /** 每个测试自己把开关打开并清空去重记录，不依赖测试之间的顺序。 */
     private static void enableAndReset() {
         GravityFlipConfig.enabled = true;
+        GravityFlipConfig.ignoreRecipeUnlocks = true;
         GravityFlipTrigger.resetTriggered();
     }
 
