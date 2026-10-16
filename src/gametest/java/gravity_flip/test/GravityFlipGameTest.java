@@ -21,6 +21,10 @@ import java.util.Set;
 /**
  * 自动化测试：在无头服务端里真的设置重力方向、真的 award 成就，然后读回来验证。
  * 运行：./gradlew runGameTest
+ * <p>
+ * 注意：模组默认 {@code enabled=false}（要 OP 在游戏内 /gravityflip on 才启用），
+ * 所以每个需要触发的测试都<strong>自己先把开关打开</strong>，
+ * 不能依赖测试之间的执行顺序。
  */
 public class GravityFlipGameTest implements FabricGameTest {
 
@@ -34,6 +38,7 @@ public class GravityFlipGameTest implements FabricGameTest {
     /** 设置重力方向后，读回来必须一致（说明借用的重力实现真的生效了） */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
     public void applyToChangesGravity(GameTestHelper helper) {
+        enableAndReset();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
 
         GravityFlipTrigger.applyTo(player, Direction.UP);
@@ -50,6 +55,7 @@ public class GravityFlipGameTest implements FabricGameTest {
     /** 随机方向必须是六个方向之一 */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
     public void randomDirectionIsOneOfSix(GameTestHelper helper) {
+        enableAndReset();
         for (int i = 0; i < 100; i++) {
             Direction direction = GravityFlipTrigger.pickDirection();
             check(ALL_SIX.contains(direction), "随机方向不合法：" + direction);
@@ -68,7 +74,7 @@ public class GravityFlipGameTest implements FabricGameTest {
      */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
     public void realCriterionAwardFlipsGravity(GameTestHelper helper) {
-        GravityFlipTrigger.resetTriggered();
+        enableAndReset();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         MinecraftServer server = helper.getLevel().getServer();
 
@@ -102,18 +108,17 @@ public class GravityFlipGameTest implements FabricGameTest {
 
         // 重复 award 同一个 criterion 不该再触发
         player.getAdvancements().award(advancement, criteria.get(0));
-        int expectedMax = Math.min(2, criteria.size());
-        check(GravityFlipTrigger.triggeredCount() == expectedMax,
+        int expected = Math.min(2, criteria.size());
+        check(GravityFlipTrigger.triggeredCount() == expected,
                 "重复 award 同一个 criterion 不该增加触发次数，实际 " + GravityFlipTrigger.triggeredCount());
 
-        GravityFlipTrigger.resetTriggered();
         helper.succeed();
     }
 
     /** 整个成就做完（所有 criterion 都完成）时也要翻 */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
     public void finishingWholeAdvancementAlsoFlips(GameTestHelper helper) {
-        GravityFlipTrigger.resetTriggered();
+        enableAndReset();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         MinecraftServer server = helper.getLevel().getServer();
 
@@ -131,14 +136,15 @@ public class GravityFlipGameTest implements FabricGameTest {
         check(player.getAdvancements().getOrStartProgress(advancement).isDone(),
                 "story/root 应当已经完成");
 
-        GravityFlipTrigger.resetTriggered();
         helper.succeed();
     }
 
-    /** 关掉开关后不再触发 */
+    /** 默认（未启用）时不该触发——这是"要指令才启用"这个需求的核心保障 */
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
-    public void disabledConfigBlocksTrigger(GameTestHelper helper) {
+    public void disabledByDefaultBlocksTrigger(GameTestHelper helper) {
+        GravityFlipConfig.enabled = false;
         GravityFlipTrigger.resetTriggered();
+
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         MinecraftServer server = helper.getLevel().getServer();
 
@@ -147,19 +153,25 @@ public class GravityFlipGameTest implements FabricGameTest {
         check(advancement != null, "找不到成就 husbandry/balanced_diet");
         List<String> criteria = new ArrayList<>(advancement.value().criteria().keySet());
 
-        GravityFlipConfig.enabled = false;
-        try {
-            player.getAdvancements().award(advancement, criteria.get(0));
-            check(GravityFlipTrigger.triggeredCount() == 0,
-                    "关掉开关后不该触发，实际 " + GravityFlipTrigger.triggeredCount());
-        } finally {
-            GravityFlipConfig.enabled = true;
-            GravityFlipTrigger.resetTriggered();
-        }
+        Direction before = GravityChangerAPI.getGravityDirection(player);
+        player.getAdvancements().award(advancement, criteria.get(0));
+        Direction after = GravityChangerAPI.getGravityDirection(player);
+
+        check(GravityFlipTrigger.triggeredCount() == 0,
+                "没启用时不该触发，实际 " + GravityFlipTrigger.triggeredCount());
+        check(before == after, "没启用时重力方向不该改变：" + before + " -> " + after);
+
+        enableAndReset();
         helper.succeed();
     }
 
     // ---------------------------------------------------------- 辅助
+
+    /** 每个测试自己把开关打开并清空去重记录，不依赖测试之间的顺序。 */
+    private static void enableAndReset() {
+        GravityFlipConfig.enabled = true;
+        GravityFlipTrigger.resetTriggered();
+    }
 
     private static void check(boolean condition, String message) {
         if (!condition) {

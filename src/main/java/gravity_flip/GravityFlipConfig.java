@@ -14,14 +14,19 @@ import java.util.Properties;
  */
 public final class GravityFlipConfig {
 
-    /** 总开关。 */
-    public static boolean enabled = true;
+    /**
+     * 是否启用。
+     * <p>
+     * <strong>默认 false</strong>：模组加载后不会碰任何人的重力，
+     * 必须由 OP 在游戏内执行 {@code /gravityflip on} 才开始工作。
+     * <p>
+     * 命令设置的启用状态<strong>不会写回这个文件</strong>，所以每次重启都要重新开一次。
+     * 想让它开局就启用，把这个值改成 true。
+     */
+    public static boolean enabled = false;
 
     /** 是否在聊天框播报是谁完成了什么成就、重力变成了哪个方向。 */
     public static boolean showMessage = true;
-
-    /** 是否只影响和完成成就者同一维度的玩家。 */
-    public static boolean sameDimensionOnly = false;
 
     private static final String FILE_NAME = "gravity_flip.properties";
 
@@ -45,9 +50,8 @@ public final class GravityFlipConfig {
             GravityFlip.LOGGER.warn("[Gravity Flip] 读取配置失败，使用内置默认值", e);
         }
 
-        enabled = readBoolean(props, "enabled", true);
+        enabled = readBoolean(props, "enabled", false);
         showMessage = readBoolean(props, "show_message", true);
-        sameDimensionOnly = readBoolean(props, "same_dimension_only", false);
     }
 
     private static boolean readBoolean(Properties props, String key, boolean fallback) {
@@ -58,17 +62,18 @@ public final class GravityFlipConfig {
     private static String defaultContent() {
         return """
                 # Gravity Flip（成就翻转重力）配置
-                # 任何一个玩家完成一个成就，全服所有人的重力方向随机翻转，并一直保持到下一次成就。
+                # 任何人完成成就的任意一个进度（criterion），全服所有人的重力方向就随机翻一次，
+                # 并一直保持到下一次触发。
 
-                # 总开关
-                enabled=true
+                # 是否开局就启用
+                # 默认 false：加载后不会碰任何人的重力，
+                #           需要 OP 在游戏内执行 /gravityflip on 才开始工作。
+                # 注意：命令设置的启用状态不会被写回这里，所以每次重启都要重新执行一次 on。
+                #      如果你希望重启后自动启用，把这个值改成 true。
+                enabled=false
 
                 # 是否在聊天框播报是谁完成了什么成就、重力变成了哪个方向
                 show_message=true
-
-                # 是否只影响和完成成就者同一维度的玩家
-                # false = 全服所有人（含其它维度）
-                same_dimension_only=false
                 """;
     }
 }
