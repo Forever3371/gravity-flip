@@ -40,6 +40,13 @@ public abstract class PlayerAdvancementsMixin {
         if (!self.getOrStartProgress(advancement).isDone()) {
             return; // 整个成就还没完成
         }
-        GravityFlipTrigger.onAdvancementCompleted(this.player, advancement.id());
+
+        // 取成就的显示名（比如"获得木头"），取不到就退回资源 id。
+        // 直接用 id.getPath() 会变成 "story/root" 这种玩家看不懂的东西。
+        net.minecraft.network.chat.Component title = advancement.value().display()
+                .map(net.minecraft.advancements.DisplayInfo::getTitle)
+                .orElse(net.minecraft.network.chat.Component.literal(advancement.id().toString()));
+
+        GravityFlipTrigger.onAdvancementCompleted(this.player, advancement.id(), title);
     }
 }

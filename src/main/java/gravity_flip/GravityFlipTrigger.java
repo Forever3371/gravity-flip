@@ -1,7 +1,9 @@
 package gravity_flip;
 
 import gravity_flip.api.GravityChangerAPI;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -17,10 +19,10 @@ import java.util.Set;
  * 几个关键决定：
  * <ul>
  *     <li><b>只在"整个成就完成"时触发</b>：一个成就有多个 criterion，
- *         {@code grantCriterion} 会被调用多次。判断 {@code getProgress(...).isDone()}
+ *         {@code award} 会被调用多次。判断 {@code getOrStartProgress(...).isDone()}
  *         才是"这个成就真的做完了"。</li>
  *     <li><b>不需要处理登录重放</b>：玩家上线时进度是通过私有的
- *         {@code loadProgressMap} 直接塞进去的，<strong>不经过</strong> {@code grantCriterion}，
+ *         {@code loadProgressMap} 直接塞进去的，<strong>不经过</strong> {@code award}，
  *         所以不会在每次登录时误触发。（这一点是查过字节码确认的，不是猜的。）</li>
  *     <li><b>额外去重</b>：万一同一个成就在同一条命里被反复判定完成，用集合挡一下。</li>
  *     <li><b>翻完保持</b>：不设定时器，重力方向一直保持到下一次成就。</li>
@@ -44,8 +46,12 @@ public final class GravityFlipTrigger {
 
     /**
      * 某个玩家完成了一个成就。返回是否真的触发了翻转。
+     *
+     * @param advancementId    成就的资源 id（用于去重与日志）
+     * @param advancementTitle 成就的显示名（用于聊天框播报；取不到时调用方会退回 id）
      */
-    public static boolean onAdvancementCompleted(ServerPlayer player, ResourceLocation advancementId) {
+    public static boolean onAdvancementCompleted(ServerPlayer player, ResourceLocation advancementId,
+                                                 Component advancementTitle) {
         if (!GravityFlipConfig.enabled) {
             return false;
         }
@@ -63,19 +69,17 @@ public final class GravityFlipTrigger {
 
         if (GravityFlipConfig.showMessage) {
             server.getPlayerList().broadcastSystemMessage(
-                    net.minecraft.network.chat.Component.literal("[重力翻转] ")
-                            .withStyle(net.minecraft.ChatFormatting.AQUA)
-                            .append(net.minecraft.network.chat.Component.literal(
-                                            player.getName().getString() + " 完成了成就 " + advancementId.getPath())
-                                    .withStyle(net.minecraft.ChatFormatting.WHITE))
-                            .append(net.minecraft.network.chat.Component.literal(
-                                            "，所有人的重力变成了 " + directionName(direction))
-                                    .withStyle(net.minecraft.ChatFormatting.YELLOW)),
+                    Component.literal("[重力翻转] ").withStyle(ChatFormatting.AQUA)
+                            .append(Component.literal(player.getName().getString() + " 完成了成就 ")
+                                    .withStyle(ChatFormatting.WHITE))
+                            .append(advancementTitle.copy().withStyle(ChatFormatting.GOLD))
+                            .append(Component.literal("，所有人的重力变成了 " + directionName(direction))
+                                    .withStyle(ChatFormatting.YELLOW)),
                     false);
         }
 
-        GravityFlip.LOGGER.info("[Gravity Flip] {} 完成了成就 {}，重力方向 -> {}（影响 {} 名玩家）",
-                player.getName().getString(), advancementId, direction, affected);
+        GravityFlip.LOGGER.info("[Gravity Flip] {} 完成了成就 {}（{}），重力方向 -> {}（影响 {} 名玩家）",
+                player.getName().getString(), advancementTitle.getString(), advancementId, direction, affected);
         return true;
     }
 

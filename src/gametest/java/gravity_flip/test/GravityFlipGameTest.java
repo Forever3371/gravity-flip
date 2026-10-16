@@ -9,6 +9,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -62,8 +63,7 @@ public class GravityFlipGameTest implements FabricGameTest {
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         Direction before = GravityChangerAPI.getGravityDirection(player);
 
-        boolean triggered = GravityFlipTrigger.onAdvancementCompleted(
-                player, ResourceLocation.withDefaultNamespace("test/advancement"));
+        boolean triggered = trigger(player, "test/advancement");
 
         check(triggered, "完成成就应当触发翻转");
         Direction after = GravityChangerAPI.getGravityDirection(player);
@@ -79,10 +79,9 @@ public class GravityFlipGameTest implements FabricGameTest {
     public void sameAdvancementTriggersOnlyOnce(GameTestHelper helper) {
         GravityFlipTrigger.resetTriggered();
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        ResourceLocation id = ResourceLocation.withDefaultNamespace("test/only_once");
 
-        check(GravityFlipTrigger.onAdvancementCompleted(player, id), "第一次完成应当触发");
-        check(!GravityFlipTrigger.onAdvancementCompleted(player, id), "同一个成就不该重复触发");
+        check(trigger(player, "test/only_once"), "第一次完成应当触发");
+        check(!trigger(player, "test/only_once"), "同一个成就不该重复触发");
         check(GravityFlipTrigger.triggeredCount() == 1,
                 "触发记录应当只有 1 条，实际 " + GravityFlipTrigger.triggeredCount());
 
@@ -98,9 +97,7 @@ public class GravityFlipGameTest implements FabricGameTest {
 
         GravityFlipConfig.enabled = false;
         try {
-            check(!GravityFlipTrigger.onAdvancementCompleted(
-                            player, ResourceLocation.withDefaultNamespace("test/disabled")),
-                    "关掉开关后不该触发");
+            check(!trigger(player, "test/disabled"), "关掉开关后不该触发");
         } finally {
             GravityFlipConfig.enabled = true;
             GravityFlipTrigger.resetTriggered();
@@ -109,6 +106,12 @@ public class GravityFlipGameTest implements FabricGameTest {
     }
 
     // ---------------------------------------------------------- 辅助
+
+    /** 模拟"某个玩家完成了某个成就"。第三个参数是播报用的显示名。 */
+    private static boolean trigger(ServerPlayer player, String advancementPath) {
+        ResourceLocation id = ResourceLocation.withDefaultNamespace(advancementPath);
+        return GravityFlipTrigger.onAdvancementCompleted(player, id, Component.literal("测试成就"));
+    }
 
     private static void check(boolean condition, String message) {
         if (!condition) {
